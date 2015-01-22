@@ -407,6 +407,6 @@ signed short CWS_signed_short(unsigned char* raw);
 int CWS_decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result);
 
 // Weather File class
-int CWF_Write(char arg, const char* fname, const char* ftype);
+int CWF_Write(int arg, const char* fname, const char* ftype, float* buffer);
 float logarytm(float a){return a;};
 

@@ -84,7 +84,7 @@ char		LogPath[255]	= "";
 float		pressOffs_hPa   = 0;
 
 /*****************************************************************************/
-#include "demon.h"
+#include "daemon.h"
 
 /******* helper functions ****************************************************/
 void  MsgPrintf(int Level, const char *fmt, ...)
@@ -110,28 +110,7 @@ void  MsgPrintf(int Level, const char *fmt, ...)
 	}
 }
 
-/*---------------------------------------------------------------------------*/
-void print_bytes(char *address, int length) {
-	int i = 0; //used to keep track of line lengths
-	char *line = (char*)address; //used to print char version of data
-	unsigned char ch; // also used to print char version of data
-	printf("%08X | ", (int)address); //Print the address we are pulling from
-	while (length-- > 0) {
-		printf("%02X ", (unsigned char)*address++); //Print each char
-		if (!(++i % 16) || (length == 0 && i % 16)) { //If we come to the end of a line...
-			//If this is the last line, print some fillers.
-			if (length == 0) { while (i++ % 16) { printf("__ "); } }
-			printf("| ");
-			while (line < address) {  // Print the character version
-				ch = *line++;
-				printf("%c", (ch < 33 || ch == 255) ? 0x2E : ch);
-			}
-			// If we are not on the last line, prefix the next line with the address.
-			if (length > 0) { printf("\n%08X | ", (int)address); }
-		}
-	}
-	puts("");
-}
+
 
 /***************** libusb functions ******************************************/
 /*void list_devices() {
@@ -358,20 +337,119 @@ void CWS_Cache(char isStoring)
 }
 
 /*---------------------------------------------------------------------------*/
-void CWS_print_decoded_data()
+/*void CWS_decode_data(int * buffor)
 {
 	char s2[100];
 	int  i;
-
-	for(i=WS_LOWER_FIXED_BLOCK_START; i<WS_LOWER_FIXED_BLOCK_END; i++) {
-		CWS_decode(&m_buf[ws_format[i].pos],
-				ws_format[i].ws_type,
-				ws_format[i].scale,
-				0.0,
-				s2);
-		printf("%s=%s\n", ws_format[i].name, s2);
+	int n=0;
+	
+	for(i=WS_LOWER_FIXED_BLOCK_START; i<WS_LOWER_FIXED_BLOCK_START+15; i++) {
+		
+		CWS_decode(&m_buf[ws_format[i].pos], ws_format[i].ws_type, ws_format[i].scale,	0.0, 	s2);
+		//printf("%s=%s\n", ws_format[i].name, s2);
+		if(n<15){
+			
+			buffor[n]=(int)atoi(s2);	
+			n++;
+		}
 	}
+}*/
+
+/*---------------------------------------------------------------------------*/
+unsigned short CWS_inc_ptr(unsigned short ptr)
+{
+	// Step forward through buffer.
+	ptr += WS_BUFFER_RECORD;             
+	if((ptr > WS_BUFFER_END)||(ptr < WS_BUFFER_START))
+		// End is reached, step to start of buffer.
+		ptr = WS_BUFFER_START;
+	return ptr;
 }
+
+/*---------------------------------------------------------------------------*/
+/***************** The CWF class *********************************************/
+int CWF_Write(int arg, const char* fname, const char* ftype, float* buffer)
+{
+// - Get current_pos
+// - Get data_count
+// Read data_count records forward from old_pos to current_pos. 
+// Calculate timestamp and break if already written
+// Step 0x10 in the range 0x10000 to 0x100
+// Store output file in requested format
+	
+
+	time_t 		timestamp   = m_timestamp - m_timestamp%60;	// Set to current minute
+
+	unsigned short	data_count  = CWS_unsigned_short(&m_buf[WS_DATA_COUNT]);
+	unsigned short	current_pos = CWS_unsigned_short(&m_buf[WS_CURRENT_POS]);
+	unsigned short	end_pos	    = current_pos, i;
+	char		s1[1000]    = "", s2[1000] = "";
+	int		n, j;
+	//FILE* 		f	    = stdout;
+	//int		FileIsEmpty = 0;
+	unsigned short	dat2_count  = data_count;	//end point for rain calculation
+
+	
+	if((old_pos==0)||(old_pos==0xFFFF))	//cachefile empty or empty eeprom was read
+		old_pos = current_pos;
+	
+	// Header
+	/*switch (arg) {
+		case 'x':
+			fputs("<ws>\n",f);
+			break;
+	};*/
+
+	// Body
+	if(arg!=0) while(current_pos!=old_pos) {		// get record & time to start output from
+		timestamp  -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
+		current_pos = CWS_dec_ptr(current_pos);
+		--dat2_count;
+	}
+	
+	printf("data_count %d \n", data_count);	
+	for(i=0; i<data_count; i++)
+	{
+		if((arg!=0))
+			CWS_calculate_rain(current_pos, dat2_count+i);
+
+		//if((arg!=0)&&LogToScreen&&(current_pos==end_pos))
+		//	break;	// current record is logged by FHEM itself if -c is set
+		
+		// Save in pywws raw format
+				n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
+				for (j=0;j<WS_PYWWS_RECORDS;j++) {
+					CWS_decode(&m_buf[current_pos+pywws_format[j].pos],
+							pywws_format[j].ws_type,
+							pywws_format[j].scale,
+							0.0,
+							s2);
+					//sprintf(s1+strlen(s1), ",%s", s2);
+					//printf("%s \n", s2);
+					if(j<10) buffer[j]=atof(s2); //get data without timestams
+				};
+
+	
+
+		strcat(s1,"\n");
+		//fputs(s1,f);
+
+		if(current_pos==end_pos)
+			break;	// All new records written
+
+		timestamp   += m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
+		current_pos =  CWS_inc_ptr(current_pos);
+	};
+	
+	// Footer
+	
+
+	//if(arg!='c') fclose(f);
+	
+	return(0);
+}
+
+/*****************************************************************************/
 
 /*---------------------------------------------------------------------------*/
 int CWS_Open()
@@ -414,18 +492,7 @@ unsigned short CWS_dec_ptr(unsigned short ptr)
 	return ptr;
 }
 
-/*---------------------------------------------------------------------------*/
-unsigned short CWS_inc_ptr(unsigned short ptr)
-{
-	// Step forward through buffer.
-	ptr += WS_BUFFER_RECORD;             
-	if((ptr > WS_BUFFER_END)||(ptr < WS_BUFFER_START))
-		// End is reached, step to start of buffer.
-		ptr = WS_BUFFER_START;
-	return ptr;
-}
 
-/*---------------------------------------------------------------------------*/
 short CWS_DataHasChanged(unsigned char OldBuf[], unsigned char NewBuf[], size_t size)
 {	// copies size bytes from NewBuf to OldBuf, if changed
 	// returns 0 if nothing changed, otherwise 1
@@ -708,11 +775,13 @@ int CWS_Read()
 
 /***************** The CWF class *********************************************/
 
-int main(int argc, char **argv)
+int readStation()
 {
-	int bflag	= 0;	// Display fixed block
+	int bflag	= 0;
+	int rflag	= 0;
 	int dflag	= 0;	// Dump decoded fixed block data
-	int rflag	= 0;	// Dump all weather station records
+	int pflag = 1;
+	
 
 	
 	int NewDataFlg	= 0;	// write to cache file or not
@@ -720,47 +789,37 @@ int main(int argc, char **argv)
 	time_t	tAkt	= time(NULL);
 	char	Buf[40], Buf2[200];
 
-	strcpy(LogPath, LOGPATH);
+	//strcpy(LogPath, LOGPATH);
 	
 	
-
-	strftime(Buf, sizeof(Buf), "%Y-%m-%d %H:%M:%S", localtime(&tAkt));
-	Buf2[0] = '\0';
-	if(vLevel>=3) {
-		int i;
-		strcpy(Buf2, " Cmd:");
-		for(i=0; i<argc; ++i) {
-			sprintf(Buf2+strlen(Buf2), " %s", argv[i]);
-                }
-	}
-	MsgPrintf(1, "%s FOWSR "VERSION" started%s\n", Buf, Buf2);
-
 	if(0==CWS_Open()) {	// Read the cache file and open the weather station
 
 		if (readflag)
 			if(CWS_Read())		// Read the weather station
 				NewDataFlg = 1;
-
+		printf("New data %d", NewDataFlg);
 		//calc press. offset (representing station height)
 		pressOffs_hPa = 0.1 * (
 			CWS_unsigned_short(&m_buf[WS_CURR_REL_PRESSURE])
 		      - CWS_unsigned_short(&m_buf[WS_CURR_ABS_PRESSURE])
 		);
-		MsgPrintf(2, "pressure offset = %.1fhPa (about %.0fm a.s.l.)\n",
-			pressOffs_hPa, pressOffs_hPa*8);
 		// Write the log files
+		float buffet[10];
+		if (pflag)
+			CWF_Write(pflag, LogPath, "pywws",buffet );
+		
 		int i;
-		for(i=0; i<WS_FIXED_BLOCK_SIZE ; i++) printf(" %02X", m_buf[i] );
-		if (bflag)	// Display fixed block
-			print_bytes(m_buf, WS_FIXED_BLOCK_SIZE);
-		if (dflag)	// Dump decoded fixed block data
-			CWS_print_decoded_data();
-		if (rflag)	// Dump all weather station records
-			print_bytes(&m_buf[WS_BUFFER_START], WS_BUFFER_SIZE-WS_BUFFER_START);
-
+		for(i=0; i<10 ; i++) printf(" %f \n", buffet[i] );		
+		
+		
 		CWS_Close(NewDataFlg);	// Write the cache file and close the weather station
+
+	
 	}	
 	return 0;
 }
 
+int main(int argc, char **argv){
+	readStation();
+}
 /******************************** EOF ****************************************/
