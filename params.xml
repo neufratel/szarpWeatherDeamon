@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<params xmlns="http://www.praterm.com.pl/SZARP/ipk" xmlns:exec="http://www.praterm.com.pl/SZARP/ipk-extra" xmlns:extra="http://www.praterm.com.pl/SZARP/ipk-extra" xmlns:modbus="http://www.praterm.com.pl/SZARP/ipk-extra" xmlns:checker="http://www.praterm.com.pl/SZARP/ipk-checker" xmlns:icinga="http://www.praterm.com.pl/SZARP/ipk-icinga" version="1.0" read_freq="10" send_freq="10" title="Poligon" documentation_base_url="http://www.szarp.com" icinga:parent="gliwice-bramka">
+
+
+
+	<device daemon="opt/szarp/bin/wetdmn" path="/dev/null" exec:frequency="120">
+	<unit id="1" type="1" subtype="1" bufsize="1">
+		<param name="Poligon:Stacja:Opó¼nienie" short_name="Del" draw_name="Opó¼nienie" unit="s" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa" color="red" min="-30" max="100" prior="2" order="1"/>
+		</param>
+		<param name="Poligon:Stacja:Wilgotno¶æ we wnêtrzu" short_name="hum_in" draw_name="Wilgotno¶æ wew." unit="%" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa" color="blue" min="0" max="100" prior="2" order="2"/>
+		</param>
+		<param name="Poligon:Stacja:Temperatura wewn±trz" short_name="T_in" draw_name="Temp. wew." unit="°C" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa" color="green" min="-30" max="50" prior="2" order="3"/>
+		</param>
+		<param name="Poligon:Stacja:Wilgotno¶æ na zewn±trz" short_name="hum_out" draw_name="Wilgotno¶æ nazew." unit="%" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="0" max="100" prior="2" order="4"/>
+		</param>
+	<param name="Poligon:Stacja:Temperatura na zewn±trz" short_name="T_out" draw_name="Temp. zew." unit="°C" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="-30" max="50" prior="2" order="5"/>
+		</param>
+	<param name="Poligon:Stacja:Ci¶nienie atmosferyczne" short_name="Cis" draw_name="Ci¶nienie atm." unit="hPa" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="970" max="1100" prior="2" order="6"/>
+		</param>
+	<param name="Poligon:Stacja:¦rednia prêdko¶æ wiatru" short_name="wind_avg" draw_name="¦rednia wiatru" unit="m/s" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="0" max="10" prior="2" order="7"/>
+		</param>
+	<param name="Poligon:Stacja:Predko¶æ chwilowa" short_name="wind_gust" draw_name="Prêdko¶æ wiatru" unit="m/s" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="0" max="10" prior="2" order="8"/>
+		</param>
+	<param name="Poligon:Stacja:Kierunek wiatru" short_name="wind_dir" draw_name="Kierunek wiatru" unit="°" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="0" max="360" prior="2" order="9"/>
+		</param>
+	<param name="Poligon:Stacja:Opady" short_name="rain" draw_name="Opady" unit="mm" prec="1" base_ind="auto">
+			<draw title="Stacja pogodowa"  min="0" max="100" prior="2" order="10"/>
+		</param>
+	</unit>
+	</device>
+
+
+
+  </device>
+  <defined>
+  </defined>
+
+  <drawdefinable>
+    <param name="Dom:Licznik:Stan licznika" short_name="Kp" draw_name="Stan licznika" unit="kWh" prec="3">
+      <define type="DRAWDEFINABLE" formula="(*:*:Stan licznika lsw) (*:*:Stan licznika msw) :"/>
+      <draw title="Licznik energii elektrycznej" min="0" max="5000" order="6"/>
+    </param>
+    <param name="Dom:Licznik:Koszt na godzinê" short_name="Ko" draw_name="Koszt zu¿ycia na godzinê" unit="z³/h" prec="2">
+      <define type="LUA" lua_formula="va">
+        <script><![CDATA[ 
+			 v = p("poligon:Dom:Licznik:Moc czynna", t, pt) * 0.595197 + 0.004825
+                         ]]></script>
+      </define>
+      <draw title="Licznik energii elektrycznej" min="0" max="5" order="6"/>
+    </param>
+  </drawdefinable>
+
+</params>
