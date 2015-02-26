@@ -904,7 +904,7 @@ int WeatherStation::decode(unsigned char* raw, enum ws_types ws_type, float scal
 		break;
 		case ss:
 			m = 2;
-			fresult = unsigned_short(raw) * scale + offset;
+			fresult = signed_short(raw) * scale + offset;
 			n=sprintf(result,"%.*f", b, fresult);
 		break;
 		case dt:
@@ -1030,9 +1030,5 @@ int WeatherStation::readStation(int tab[], int params_count)
 	}	
 	return 0;
 }
-/*
-int main(int arg, char** argv){
-	WeatherStation a;
-	a.readStation();
-}
-*/
+
+
