@@ -326,7 +326,6 @@ class USBConnector{
 		int open(int vendor, int product);
 		int close();
 		short read_block(unsigned short ptr, char* buffer);
-		unsigned short write_byte(unsigned short ptr, char* buffer);
 	
 };
 
@@ -362,7 +361,8 @@ class WeatherStation{
 		int decode(unsigned char* raw, enum ws_types ws_type, float scale, float offset, char* result);
 	public:
 		int readStation(int tab[], int params_count);
-		WeatherStation(){};
+		WeatherStation(){usb = USBConnector();
+				 usb.open(0x1941, 0x8021);};
 		
 };
 
@@ -385,7 +385,7 @@ class WeatherStation{
 #include <time.h>
 
 
-#define WORKPATH "//var//log//fowsr//"
+#define WORKPATH "//var//log//szarp//"
 
 void  MsgPrintf(int Level, const char *fmt, ...)
 {
@@ -438,12 +438,14 @@ int USBConnector::open(int vendor, int product){ /* returns 0 if OK, <0 if error
 
 	dev = this->findUSBDevice(vendor, product);
 	if(!dev) {
-		MsgPrintf(0, "WeatherStation not found on USB (vendor,product)=(%04X,%04X)\n", vendor, product);
+		//MsgPrintf(0, "WeatherStation not found on USB (vendor,product)=(%04X,%04X)\n", vendor, product);
+		printf( "WeatherStation not found on USB (vendor,product)=(%04X,%04X)\n", vendor, product);
 		return -1;
 	}
 	devh = usb_open(dev);
 	if(!devh) {
-		MsgPrintf(0, "Open USB device failed (vendor,product)=(%04X,%04X)\n", vendor, product);
+		//MsgPrintf(0, "Open USB device failed (vendor,product)=(%04X,%04X)\n", vendor, product);
+		printf( "Open USB device failed (vendor,product)=(%04X,%04X)\n", vendor, product);
 		return -2;
 	}
 	//signal(SIGTERM, close); //CUZ... 
@@ -513,49 +515,20 @@ If not, then it means the command has not been received correctly.
 	tbuf[5] = 0;		// READ ADDRESS HIGH
 	tbuf[6] = 0;		// READ ADDRESS LOW
 	tbuf[7] = 0x20;		// END MARK
-
+	
 	// Prepare read of 32-byte chunk from position ptr
 	int ret = usb_control_msg(devh, USB_TYPE_CLASS + USB_RECIP_INTERFACE, 9, 0x200, 0, tbuf, 8, 1000);
-	if(ret<0) MsgPrintf(0, "usb_control_msg failed (%d) whithin USBConnector_read_block(%04X,...)\n", ret, ptr);
-	else {
+	if(ret<0){
+		 MsgPrintf(0, "usb_control_msg failed (%d) whithin USBConnector_read_block(%04X,...)\n", ret, ptr);
+		
+	}else {
 		// Read 32-byte chunk and place in buffer buf
 		ret = usb_interrupt_read(devh, 0x81, buffer, 0x20, 1000);
 		if(ret<0) MsgPrintf(0, "usb_interrupt_read failed (%d) whithin USBConnector_read_block(%04X,...)\n", ret, ptr);
+		
 	}
 	return ret;
 }
-/*---------------------------------------------------------------------------*/
-unsigned short USBConnector::write_byte(unsigned short ptr, char* buffer)
-{
-/*
-Write one byte data to ADDR command	
-
-If data has been received and written correctly, 
-the device will return 8 bytes 0xA5 indicating the command has been carried out sucessfully.
-*/
-	char buf_1 = (char)(ptr / 256);
-	char buf_2 = (char)(ptr & 0xFF);
-	char tbuf[8];
-	tbuf[0] = 0xA2;		// WRITE COMMAND
-	tbuf[1] = buf_1;	// WRITE ADDRESS HIGH
-	tbuf[2] = buf_2;	// WRITE ADDRESS LOW
-	tbuf[3] = 0x20;		// END MARK
-	tbuf[4] = 0xA2;		// WRITE COMMAND
-	tbuf[5] = *buffer;		// DATA TO BE WRITTEN
-	tbuf[6] = 0;		// DON'T CARE
-	tbuf[7] = 0x20;		// END MARK
-
-	int ret;
-	// Prepare write of 32-byte chunk from position ptr
-	ret = usb_control_msg(devh, USB_TYPE_CLASS + USB_RECIP_INTERFACE, 9, 0x200, 0, tbuf, 8, 1000);
-	// Write 32-byte chunk from buffer buf
-	ret = usb_interrupt_write(devh, 0x81, buffer, 0x20, 1000);
-	// Read 8-byte result and place in buffer tbuf
-	ret = usb_interrupt_read(devh, 0x81, tbuf, 0x08, 1000);
-
-	return ret;
-}
-/*---------------------------------------------------------------------------*/
 
 /*----------------------------WeatherStation---------------------------------*/
 /*---------------------------------------------------------------------------*/
@@ -619,7 +592,7 @@ int WeatherStation::write(int arg, const char* fname, const char* ftype, float* 
 		--dat2_count;
 	}
 	
-	printf("data_count %d \n", data_count);	
+	
 	for(i=0; i<data_count; i++)
 	{
 		if((arg!=0))
@@ -673,14 +646,15 @@ int WeatherStation::read(){
 
 	m_timestamp = time(NULL);	// Set to current time
 	old_pos	    = unsigned_short(&m_buf[WS_CURRENT_POS]);
-
+	
 	int 		n, NewDataFlg = read_fixed_block();
-	unsigned char	DataBuf[WS_BUFFER_CHUNK];
 
+	unsigned char	DataBuf[WS_BUFFER_CHUNK];
+	
 	unsigned short	data_count = unsigned_short(&m_buf[WS_DATA_COUNT]);
 	unsigned short	current_pos= unsigned_short(&m_buf[WS_CURRENT_POS]);
 	unsigned short	i;
-
+	
 	if(current_pos%WS_BUFFER_RECORD) {
 		MsgPrintf(0, "CWS_Read: wrong current_pos=0x%04X\n", current_pos);
 		exit(1);
@@ -716,6 +690,7 @@ int WeatherStation::open()
 		cache(WS_CACHE_READ);	// Read cache file
 		strftime(Buf,sizeof(Buf),"%Y-%m-%d %H:%M:%S", localtime(&m_previous_timestamp));
 		MsgPrintf(2, "last cached record %s\n", Buf);
+		printf("USB WheterStation is open \n");
 	}
 	return ret;
 }
@@ -755,7 +730,7 @@ short WeatherStation::read_fixed_block()
 	unsigned short	i;
 	unsigned char	fb_buf[WS_FIXED_BLOCK_SIZE];
 	char		NewDataFlg = 0;
-
+	
 	for(i=WS_FIXED_BLOCK_START;i<WS_FIXED_BLOCK_SIZE;i+=WS_BUFFER_CHUNK)
 		if(usb.read_block(i, (char*)&fb_buf[i])<0)
 			return 0; //failure while reading data
@@ -958,12 +933,12 @@ int WeatherStation::decode(unsigned char* raw, enum ws_types ws_type, float scal
 		sprintf(result,"--.-");
 		n = 0;
 	}
-	return n;
+	return n;	
 }
 void WeatherStation::cache(char isStoring){
 	{
 	int	n;
-	char	fname[] = WORKPATH"fowsr.dat";	// cache file
+	char	fname[] = WORKPATH"wetdmn.dat";	// cache file
 	char	Buf[40];
 	FILE*	f = NULL;
 	
@@ -977,6 +952,8 @@ void WeatherStation::cache(char isStoring){
 		if(m_timestamp<3600) {
 			strftime(Buf,sizeof(Buf),"%Y-%m-%d %H:%M:%S", localtime(&m_timestamp));
 			MsgPrintf(0, "wrong timestamp %s - cachefile not written\n", Buf);
+		//	n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f); //dublowany dol
+		//	n=fwrite(m_buf,sizeof(m_buf[0]),WS_BUFFER_SIZE,f);//dublowany dol
 		}
 		else if (f=fopen(fname,"wb")) {
 			n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f);
@@ -989,27 +966,22 @@ void WeatherStation::cache(char isStoring){
 
 int WeatherStation::readStation(int tab[], int params_count)
 {
-	int bflag	= 1;
-	int rflag	= 1;
-	int dflag	= 1;	// Dump decoded fixed block data
-	int pflag = 1;
 	
 
 	
-	int NewDataFlg	= 0;	// write to cache file or not
-	int 	c;
-	time_t	tAkt	= time(NULL);
+	int NewDataFlg	= 1;	// write to cache file or not
 	char	Buf[40], Buf2[200];
 
-	//strcpy(LogPath, LOGPATH);
 	
-	
+	strcpy(LogPath, WORKPATH);
+
 	if(this->open()==0) {	// Read the cache file and open the weather station
-	//	printf("Otwarto Stacje");
-		if (readflag)
+	
+		if (true)
 			if(read())		// Read the weather station
 				NewDataFlg = 1;
-		printf("New data %d \n", NewDataFlg);
+		
+	
 		//calc press. offset (representing station height)
 		pressOffs_hPa = 0.1 * (
 			unsigned_short(&m_buf[WS_CURR_REL_PRESSURE])
@@ -1017,11 +989,9 @@ int WeatherStation::readStation(int tab[], int params_count)
 		);
 		// Write the log files
 		float buffet[10];
-		if (pflag)
-			write(pflag, LogPath, "pywws",buffet );
+		write(1, LogPath, "wetdmn",buffet ); // pywws
 		
-		int i;
-		for(i=0; i<params_count ; i++) tab[i]=buffet[i]*10; //printf(" %f \n", buffet[i] );		
+		for(int i=0; i<params_count ; i++) {tab[i]=buffet[i]*10; printf(" %f \n", buffet[i] );};		
 		
 		
 		close(NewDataFlg);	// Write the cache file and close the weather station

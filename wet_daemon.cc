@@ -1,4 +1,4 @@
-/* https://github.com/neufratel/szarpWeatherDeamon.git
+/* 
   SZARP: SCADA software 
 
   This program is free software; you can redistribute it and/or modify
@@ -16,37 +16,6 @@
   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
 */
 
-/*
- * Demon do odczytywania danych ze stacji pogodowych.
- * 
- * Jaroslaw Rudzki  <jrudzki@newterm.pl>
- * 
- * 
- */
-
-/*
- SZARP daemon description block.
-
- @description_start
-
- @class 4
-
- @devices Daemon reads sets of data from  wheather station via USB.
- @devices.pl Sterownik czyta porcje danych ze stacji pogodowej.
-
-
-
- @config_example
- <device 
-      xmlns:exec="http://www.praterm.com.pl/SZARP/ipk-extra"
-      daemon="/opt/szarp/bin/wetdmn" 
-      path="/opt/szarp/bin/some_script" TO DO: removing this dependecy in code
-      exec:frequency="30"
-      options="--some-option -f some-argument">
-      ...
-
- @description_end
-*/
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -76,8 +45,7 @@
 #include "ipchandler.h"
 #include "liblog.h"
 #include "xmlutils.h"
- ://github.com/neufratel/szarpWeatherDeamon.gitpcje do uruchamianego programu.
-//#include "execute.h"
+
 
 #include "conversion.h"
 
@@ -305,7 +273,9 @@ int main(int argc, char *argv[])
 	IPCHandler     *ipc;
 	WeatherDaemon *dmn;
 	WeatherStation * station;
+	station= new WeatherStation();
 	int station_data[10];
+	station->readStation(station_data, 10);
 
 	xmlInitParser();
 	LIBXML_TEST_VERSION
@@ -334,7 +304,7 @@ int main(int argc, char *argv[])
 	init_signals();
 
 	sz_log(2, "Starting WetDaemon");
-	station= new WeatherStation();
+	
 
 	while (true) {
 		dmn->Wait();
