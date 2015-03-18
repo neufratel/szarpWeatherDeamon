@@ -331,8 +331,7 @@ class USBConnector{
 
 class WeatherStation{
 	private:
-		int LogToScreen;
-		int readflag;
+	
 		USBConnector usb;
 		
 		unsigned short old_pos;
@@ -345,7 +344,7 @@ class WeatherStation{
 
 		unsigned short inc_ptr(unsigned short ptr);
 		unsigned short dec_ptr(unsigned short ptr);
-		int write(int arg, const char* fname, const char* ftype, float* buffer);
+		int getData(float* buffer); //fill tab[10] with station data;
 		int read();
 		int open();
 		int close(int new_data_flag);
@@ -437,14 +436,14 @@ int USBConnector::open(int vendor, int product){ /* returns 0 if OK, <0 if error
 	usb_find_devices();
 
 	dev = this->findUSBDevice(vendor, product);
-	if(!dev) {
-		//MsgPrintf(0, "WeatherStation not found on USB (vendor,product)=(%04X,%04X)\n", vendor, product);
+	if(dev==NULL) {
+		MsgPrintf(0, "WeatherStation not found on USB (vendor,product)=(%04X,%04X)\n", vendor, product);
 		printf( "WeatherStation not found on USB (vendor,product)=(%04X,%04X)\n", vendor, product);
 		return -1;
 	}
 	devh = usb_open(dev);
 	if(!devh) {
-		//MsgPrintf(0, "Open USB device failed (vendor,product)=(%04X,%04X)\n", vendor, product);
+		MsgPrintf(0, "Open USB device failed (vendor,product)=(%04X,%04X)\n", vendor, product);
 		printf( "Open USB device failed (vendor,product)=(%04X,%04X)\n", vendor, product);
 		return -2;
 	}
@@ -553,14 +552,14 @@ unsigned short WeatherStation::dec_ptr(unsigned short ptr)
 	return ptr;
 }
 /*---------------------------------------------------------------------------*/
-int WeatherStation::write(int arg, const char* fname, const char* ftype, float* buffer)
+int WeatherStation::getData( float* buffer)
 {
 // - Get current_pos
 // - Get data_count
 // Read data_count records forward from old_pos to current_pos. 
 // Calculate timestamp and break if already written
 // Step 0x10 in the range 0x10000 to 0x100
-// Store output file in requested format
+
 	
 
 	time_t 		timestamp   = m_timestamp - m_timestamp%60;	// Set to current minute
@@ -570,23 +569,17 @@ int WeatherStation::write(int arg, const char* fname, const char* ftype, float* 
 	unsigned short	end_pos	    = current_pos, i;
 	char		s1[1000]    = "", s2[1000] = "";
 	int		n, j;
-	//FILE* 		f	    = stdout;
-	//int		FileIsEmpty = 0;
+
 	unsigned short	dat2_count  = data_count;	//end point for rain calculation
 
 	
 	if((old_pos==0)||(old_pos==0xFFFF))	//cachefile empty or empty eeprom was read
 		old_pos = current_pos;
 	
-	// Header
-	/*switch (arg) {
-		case 'x':
-			fputs("<ws>\n",f);
-			break;
-	};*/
+	
 
 	// Body
-	if(arg!=0) while(current_pos!=old_pos) {		// get record & time to start output from
+	while(current_pos!=old_pos) {		// get record & time to start output from
 		timestamp  -= m_buf[current_pos+WS_DELAY]*60;	// Update timestamp
 		current_pos = dec_ptr(current_pos);
 		--dat2_count;
@@ -595,13 +588,10 @@ int WeatherStation::write(int arg, const char* fname, const char* ftype, float* 
 	
 	for(i=0; i<data_count; i++)
 	{
-		if((arg!=0))
+		
 			calculate_rain(current_pos, dat2_count+i);
 
-		//if((arg!=0)&&LogToScreen&&(current_pos==end_pos))
-		//	break;	// current record is logged by FHEM itself if -c is set
 		
-		// Save in pywws raw format
 				n=strftime(s1,100,"%Y-%m-%d %H:%M:%S", gmtime(&timestamp));
 				for (j=0;j<WS_PYWWS_RECORDS;j++) {
 					decode(&m_buf[current_pos+pywws_format[j].pos],
@@ -609,8 +599,6 @@ int WeatherStation::write(int arg, const char* fname, const char* ftype, float* 
 							pywws_format[j].scale,
 							0.0,
 							s2);
-					//sprintf(s1+strlen(s1), ",%s", s2);
-					//printf("%s \n", s2);
 					if(j<10) buffer[j]=atof(s2); //get data without timestams
 				};
 
@@ -626,10 +614,6 @@ int WeatherStation::write(int arg, const char* fname, const char* ftype, float* 
 		current_pos =  inc_ptr(current_pos);
 	};
 	
-	// Footer
-	
-
-	//if(arg!='c') fclose(f);
 	
 	return(0);
 }
@@ -683,7 +667,6 @@ int WeatherStation::open()
 	char	Buf[40];
 	int	ret = 0;
 
-	if(readflag)
 		ret = usb.open(0x1941, 0x8021);
 
 	if(ret==0) {
@@ -702,7 +685,6 @@ int WeatherStation::close(int new_data_flag)
 	if(new_data_flag) cache(WS_CACHE_WRITE);	// Write cache file
 	strftime(Buf,sizeof(Buf),"%Y-%m-%d %H:%M:%S", localtime(&m_timestamp));
 	MsgPrintf(2, "last record read   %s\n", Buf);
-	if(readflag)
 		usb.close();
 	return 0;
 }
@@ -952,8 +934,7 @@ void WeatherStation::cache(char isStoring){
 		if(m_timestamp<3600) {
 			strftime(Buf,sizeof(Buf),"%Y-%m-%d %H:%M:%S", localtime(&m_timestamp));
 			MsgPrintf(0, "wrong timestamp %s - cachefile not written\n", Buf);
-		//	n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f); //dublowany dol
-		//	n=fwrite(m_buf,sizeof(m_buf[0]),WS_BUFFER_SIZE,f);//dublowany dol
+		
 		}
 		else if (f=fopen(fname,"wb")) {
 			n=fwrite(&m_timestamp,sizeof(m_timestamp),1,f);
@@ -987,9 +968,10 @@ int WeatherStation::readStation(int tab[], int params_count)
 			unsigned_short(&m_buf[WS_CURR_REL_PRESSURE])
 		      - unsigned_short(&m_buf[WS_CURR_ABS_PRESSURE])
 		);
-		// Write the log files
+
 		float buffet[10];
-		write(1, LogPath, "wetdmn",buffet ); // pywws
+
+		getData(buffet ); // write data to buffer;
 		
 		for(int i=0; i<params_count ; i++) {tab[i]=buffet[i]*10; printf(" %f \n", buffet[i] );};		
 		
